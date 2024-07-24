@@ -76,14 +76,29 @@ class ExtrinsicCalibrator(rclpy.node.Node):
       homo_vec = np.array([[0.0, 0.0, 0.0, 1.0]])
       tf_matrix = np.hstack((r_solved, t_vec))
       tf_matrix = np.vstack((tf_matrix, homo_vec))
+
+      # camera to lidar
       self.get_logger().info("transformation matrix:")
       self.get_logger().info(f"[[{tf_matrix[0][0]}, {tf_matrix[0][1]}, {tf_matrix[0][2]}, {tf_matrix[0][3]}], \n[{tf_matrix[1][0]}, {tf_matrix[1][1]}, {tf_matrix[1][2]}, {tf_matrix[1][3]}], \n[{tf_matrix[2][0]}, {tf_matrix[2][1]}, {tf_matrix[2][2]}, {tf_matrix[2][3]}], \n[{tf_matrix[3][0]}, {tf_matrix[3][1]}, {tf_matrix[3][2]}, {tf_matrix[3][3]}]\n]")
       r = R.from_matrix(r_solved)
       quat = r.as_quat()
       self.get_logger().info("quaternion: "+"[x, y, z, w]")
       self.get_logger().info(f"[{quat[0]}, {quat[1]}, {quat[2]}, {quat[3]}]")
-      euler = r.as_euler('zyx')
-      self.get_logger().info(f"x: {t_vec[0][0]}\ny: {t_vec[1][0]}\nz: {t_vec[2][0]}\nroll: {euler[2]}\npitch: {euler[1]}\nyaw: {euler[0]}")
+      euler = r.as_euler('xyz')
+      self.get_logger().info("euler angle: ")
+      self.get_logger().info(f"x: {t_vec[0][0]}\ny: {t_vec[1][0]}\nz: {t_vec[2][0]}\nroll: {euler[0]}\npitch: {euler[1]}\nyaw: {euler[2]}")
+
+      # lidar to camera
+      tf_matrix_i = np.matrix(tf_matrix).I
+      self.get_logger().info("invert transformation matrix:")
+      self.get_logger().info(f"[[{tf_matrix_i[0, 0]}, {tf_matrix_i[0, 1]}, {tf_matrix_i[0, 2]}, {tf_matrix_i[0, 3]}], \n[{tf_matrix_i[1, 0]}, {tf_matrix_i[1, 1]}, {tf_matrix_i[1, 2]}, {tf_matrix_i[1, 3]}], \n[{tf_matrix_i[2, 0]}, {tf_matrix_i[2, 1]}, {tf_matrix_i[2, 2]}, {tf_matrix_i[2, 3]}], \n[{tf_matrix_i[3, 0]}, {tf_matrix_i[3, 1]}, {tf_matrix_i[3, 2]}, {tf_matrix_i[3, 3]}]\n]")
+      r_i = R.from_matrix(tf_matrix_i[:3, :3])
+      quat_i = r_i.as_quat()
+      self.get_logger().info("quaternion invert: "+"[x, y, z, w]")
+      self.get_logger().info(f"[{quat_i[0]}, {quat_i[1]}, {quat_i[2]}, {quat_i[3]}]")
+      euler_i = r_i.as_euler('xyz')
+      self.get_logger().info("euler angle invert: ")
+      self.get_logger().info(f"x: {tf_matrix_i[0, 3]}\ny: {tf_matrix_i[1, 3]}\nz: {tf_matrix_i[2, 3]}\nroll: {euler_i[0]}\npitch: {euler_i[1]}\nyaw: {euler_i[2]}")
       return quat, t_vec
 
   def cameraPointsCallback(self, msg: Float32MultiArray):
