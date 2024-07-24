@@ -9,7 +9,7 @@ criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
 # prepare object points, like (0,0,0), (1,0,0), (2,0,0) ....,(6,5,0)
 objp = np.zeros((CHECKERBOARD[0]*CHECKERBOARD[1], 3), np.float32)
 objp[:,:2] = np.mgrid[0:CHECKERBOARD[1], 0:CHECKERBOARD[0]].T.reshape(-1,2)
-objp = objp*0.05
+objp = objp
  
 # Arrays to store object points and image points from all the images.
 objpoints = [] # 3d point in real world space
@@ -37,8 +37,7 @@ for fname in images:
     # cv.waitKey(500)
 
   cv.destroyAllWindows()
-  
-ret, mtx, dist, rvecs, tvecs = cv.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None)
+ret, mtx, dist, rvecs, tvecs = cv.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None, flags=cv.CALIB_RATIONAL_MODEL)
 
 print(mtx)
 print(dist)

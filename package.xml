@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>manual_lidar_camera_calibration</name>
+  <version>1.0.0</version>
+  <description>Manually set 2D and 3D points for PnP solver</description>
+
+  <maintainer email="mark@pixmoving.net">Mark Jin</maintainer>
+
+  <license>TODO</license>
+
+  <author>Mark Jin</author>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>libopencv-dev</depend>
+
+  <depend>pcl_ros</depend>
+  <depend>cv_bridge</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

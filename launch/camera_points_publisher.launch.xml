@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<launch>
+  <arg name="image_path" default="/home/ahua20/rosbag/livox2camera/output/rosbag2_2024_07_17-13_08_48_pcd_png/camera1.png" />
+  
+
+  <node pkg="manual_lidar_camera_calibration" name="camera_points_publisher_node" exec="camera_points_publisher.py" output="screen">
+    <param name="image_path" value="$(var image_path)" />
+  </node>
+
+</launch>

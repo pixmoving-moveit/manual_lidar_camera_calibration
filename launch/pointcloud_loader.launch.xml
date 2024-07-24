@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<launch>
+  <arg name="rviz_config" default="$(find-pkg-share manual_lidar_camera_calibration)/launch/lidar_camera_calibration.rviz" description="rviz config"/>
+  <arg name="pcd_path" default="/home/ahua20/autoware_map/sample-map-planning/pointcloud_map.pcd" />
+  <arg name="leaf_size" default="0.01" />
+  
+
+  <node pkg="manual_lidar_camera_calibration" name="pointcloud_loader_node" exec="pointcloud_loader_node" output="screen">
+    <param name="pcd_path" value="$(var pcd_path)" />
+    <param name="leaf_size" value="$(var leaf_size)" />
+  </node>
+
+  <node
+      pkg="rviz2"
+      exec="rviz2"
+      name="rviz2"
+      output="screen"
+      args="-d $(var rviz_config) "
+    />
+
+</launch>

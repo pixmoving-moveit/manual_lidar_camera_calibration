@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<launch>
+  
+
+  <node pkg="manual_lidar_camera_calibration" name="extrinsic_calibrator_node" exec="extrinsic_calibrator.py" output="screen">
+  </node>
+
+</launch>
