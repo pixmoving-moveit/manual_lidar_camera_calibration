@@ -14,57 +14,25 @@ from sensor_msgs.msg import CameraInfo
 class CameraPointsPublisher(rclpy.node.Node):
   def __init__(self):
     super().__init__('camera_points_publisher')
-    self.declare_parameter('image_path', 'image.png')
-    self.image_path = self.get_parameter('image_path').get_parameter_value().string_value
-    self.img = cv2.imread(self.image_path, 1)
-    self.K = np.array(
-      [
-        [1.0096461088041725e+03, 0., 9.3689248385778296e+02],
-        [0., 1.0096581504805509e+03, 4.9988257013426869e+02],
-        [0., 0., 1. ]
-      ]
-    ).reshape(3, 3)
-    self.D = np.array(
-      [
-        9.5856164145301237e-01,
-        1.8914835820355605e-01,
-        -2.4506997072279488e-06,
-        5.9923693345781568e-05,
-        3.9186197392106761e-03,
-        1.3529369410,
-        0.4698847334,
-        0.0333375880
-      ]
-    ).reshape(8, 1)
-    # self.D = np.zeros((5, 1))
+    self.declare_parameter('image_topic', '/image_raw')
+    self.image_topic = self.get_parameter('image_topic').get_parameter_value().string_value
+    self.declare_parameter('camera_info_topic', '/camera_info')
+    self.camera_info_topic = self.get_parameter('camera_info_topic').get_parameter_value().string_value
+    self.declare_parameter('output_camera_frame_id', 'camera')
+    self.output_camera_frame_id = self.get_parameter('output_camera_frame_id').get_parameter_value().string_value
 
-    self.ud_frame = self.distortionCorrection(self.K, self.D, self.img)
-    # cv2.imwrite("image.png", self.ud_frame)
-    threading.Thread(target=self.showImage).start()
+    self.img = None
+    self.K = np.eye(3)
+    self.D = np.zeros((14, 1))
+
+    self.ud_frame = None
 
     # ROS msgs
     # image msg
-    self.image_msg = CvBridge().cv2_to_imgmsg(self.ud_frame)
-    self.image_msg.header.frame_id = "camera"
+    self.image_msg = None
     
     # camera info msg
-    self.camera_info_msg = CameraInfo()
-    self.camera_info_msg.height = 1080
-    self.camera_info_msg.width = 1920
-    self.camera_info_msg.distortion_model = "plumb_bob"
-    self.camera_info_msg.header.frame_id = "camera"
-    for i in range(self.D.size):
-      self.camera_info_msg.d.append(self.D[i][0])
-    for i in range(9):
-      self.camera_info_msg.k[i] = self.K[int(i/3)][i%3]
-    self.camera_info_msg.r[0] = 1.0
-    self.camera_info_msg.r[4] = 1.0
-    self.camera_info_msg.r[8] = 1.0
-    self.camera_info_msg.p[0] = self.camera_info_msg.k[0]
-    self.camera_info_msg.p[2] = self.camera_info_msg.k[2]
-    self.camera_info_msg.p[5] = self.camera_info_msg.k[4]
-    self.camera_info_msg.p[6] = self.camera_info_msg.k[5]
-    self.camera_info_msg.p[10] = self.camera_info_msg.k[8]
+    self.camera_info_msg = None
     
     # camera points msg
     self.camera_points_msg = Float32MultiArray()
@@ -72,15 +40,44 @@ class CameraPointsPublisher(rclpy.node.Node):
     self.image_publisher = self.create_publisher(Image, "image_raw", 10)
     self.camera_info_publisher = self.create_publisher(CameraInfo, "camera_info", 10)
     self.camera_points_publisher = self.create_publisher(Float32MultiArray, "camera_points", 10)
+    # ROS subscriber
+    self.image_subscriber = self.create_subscription(Image, self.image_topic, self.imageCallback, 10)
+    self.camera_info_subscriber = self.create_subscription(CameraInfo, self.camera_info_topic, self.cameraInfoCallback, 10)
     # ROS timer
     self.timer = self.create_timer(1.0, self.timerCallback)
+
+    self.is_image_received = False
+    self.is_camera_info_received = False
+    self.is_showing_image = False
 
     self.camera_points = []
     
   def timerCallback(self,):
-    self.image_msg.header.stamp = self.get_clock().now().to_msg()
-    self.camera_info_msg.header.stamp = self.get_clock().now().to_msg()
+    if self.is_image_received and self.is_camera_info_received:
+      if not self.is_showing_image:
+        self.ud_frame = self.distortionCorrection(self.K, self.D, self.img)
+        threading.Thread(target=self.showImage).start()
+        self.is_showing_image = True
+    else:
+      self.get_logger().warn("image or camera info not received.")
+  
+  def imageCallback(self, msg: Image):
+    if not self.is_image_received:
+      self.img = CvBridge().imgmsg_to_cv2(msg)
+      self.is_image_received = True
+    self.image_msg = msg
+    self.image_msg.header.frame_id = self.output_camera_frame_id
     self.image_publisher.publish(self.image_msg)
+  
+  def cameraInfoCallback(self, msg: CameraInfo):
+    if not self.is_camera_info_received:
+      for i in range(9):
+        self.K[int(i/3), i%3] = msg.k[i]
+      for i in range(len(msg.d)):
+        self.D[i, 0] = msg.d[i]
+      self.is_camera_info_received = True
+    self.camera_info_msg = msg
+    self.camera_info_msg.header.frame_id = self.output_camera_frame_id
     self.camera_info_publisher.publish(self.camera_info_msg)
   
   def undistort(self, k_matrix: np.array, d_matrix: np.array, frame):
