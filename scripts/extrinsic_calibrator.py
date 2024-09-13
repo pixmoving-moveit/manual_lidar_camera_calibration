@@ -10,6 +10,7 @@ import rclpy.node
 from geometry_msgs.msg import PointStamped
 from geometry_msgs.msg import TransformStamped
 from std_msgs.msg import Float32MultiArray
+from sensor_msgs.msg import CameraInfo
 from tf2_ros.static_transform_broadcaster import StaticTransformBroadcaster
 
 
@@ -18,14 +19,15 @@ from tf2_ros.static_transform_broadcaster import StaticTransformBroadcaster
 class ExtrinsicCalibrator(rclpy.node.Node):
   def __init__(self):
     super().__init__('ExtrinsicCalibrator')
-
-    self.K = np.array(
-      [
-        [1.0096461088041725e+03, 0., 9.3689248385778296e+02],
-        [0., 1.0096581504805509e+03, 4.9988257013426869e+02],
-        [0., 0., 1. ]
-      ]
-    ).reshape(3, 3)
+    
+    self.declare_parameter('camera_frame_id', 'camera')
+    self.camera_frame_id = self.get_parameter('camera_frame_id').get_parameter_value().string_value
+    self.declare_parameter('lidar_frame_id', 'lidar')
+    self.lidar_frame_id = self.get_parameter('lidar_frame_id').get_parameter_value().string_value
+    self.declare_parameter('camera_info_topic', '/camera_info')
+    self.camera_info_topic = self.get_parameter('camera_info_topic').get_parameter_value().string_value
+    
+    self.K = np.eye(3)
     
     self.camera_points_subscriber = self.create_subscription(
       Float32MultiArray,
@@ -39,8 +41,16 @@ class ExtrinsicCalibrator(rclpy.node.Node):
       self.objectPointsCallback,
       10
     )
+    self.camera_info_subscriber = self.create_subscription(
+      CameraInfo,
+      self.camera_info_topic,
+      self.cameraInfoCallback, 10
+    )
+    
     self.camera_points = []
     self.object_points = []
+
+    self.is_camera_info_received = False
     
     # ROS timer
     self.timer = self.create_timer(0.5, self.timerCallback)
@@ -52,8 +62,8 @@ class ExtrinsicCalibrator(rclpy.node.Node):
   def make_transforms(self, quat, t_vec):
     t = TransformStamped()
     t.header.stamp = self.get_clock().now().to_msg()
-    t.header.frame_id = 'camera'
-    t.child_frame_id = 'lidar'
+    t.header.frame_id = self.camera_frame_id
+    t.child_frame_id = self.lidar_frame_id
     t.transform.translation.x = float(t_vec[0][0])
     t.transform.translation.y = float(t_vec[1][0])
     t.transform.translation.z = float(t_vec[2][0])
@@ -100,6 +110,12 @@ class ExtrinsicCalibrator(rclpy.node.Node):
       self.get_logger().info("euler angle invert: ")
       self.get_logger().info(f"x: {tf_matrix_i[0, 3]}\ny: {tf_matrix_i[1, 3]}\nz: {tf_matrix_i[2, 3]}\nroll: {euler_i[0]}\npitch: {euler_i[1]}\nyaw: {euler_i[2]}")
       return quat, t_vec
+  
+  def cameraInfoCallback(self, msg: CameraInfo):
+    if not self.is_camera_info_received:
+      for i in range(9):
+        self.K[int(i/3), i%3] = msg.k[i]
+      self.is_camera_info_received = True
 
   def cameraPointsCallback(self, msg: Float32MultiArray):
     if(len(msg.data)<2 and len(msg.data)/2==len(self.camera_points)):
@@ -116,16 +132,19 @@ class ExtrinsicCalibrator(rclpy.node.Node):
     self.get_logger().info("number of object points: "+ str(len(self.object_points)) + "  x: "+str(point[0]) + "  y: "+str(point[1]) + "  z: "+str(point[2]))
     
   def timerCallback(self,):
-    num_camera_points = len(self.camera_points)
-    num_object_points = len(self.object_points)
-    if(num_camera_points==num_object_points):
-      if(num_camera_points > self.num_points):
-        self.num_points += 1
-        if(num_camera_points>=6):
-          self.get_logger().info("calibrating...")
-          quat, t_vec = self.extrinsicsCompute(self.object_points, self.camera_points, self.K)
-          self.get_logger().info("calibrated")
-          self.make_transforms(quat, t_vec)
+    if self.is_camera_info_received:
+      num_camera_points = len(self.camera_points)
+      num_object_points = len(self.object_points)
+      if(num_camera_points==num_object_points):
+        if(num_camera_points > self.num_points):
+          self.num_points += 1
+          if(num_camera_points>=6):
+            self.get_logger().info("calibrating...")
+            quat, t_vec = self.extrinsicsCompute(self.object_points, self.camera_points, self.K)
+            self.get_logger().info("calibrated")
+            self.make_transforms(quat, t_vec)
+    else:
+      self.get_logger().warn("camera info not received.")
 
 def main():
   rclpy.init()
