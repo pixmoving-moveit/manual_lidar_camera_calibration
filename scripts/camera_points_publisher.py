@@ -102,6 +102,8 @@ class CameraPointsPublisher(rclpy.node.Node):
       cv2.imshow("frame", self.ud_frame)
   
   def showImage(self, ):
+    cv2.namedWindow("frame", cv2.WINDOW_NORMAL)
+    cv2.resizeWindow("frame", 1600, 900)
     cv2.imshow('frame', self.ud_frame)
     cv2.setMouseCallback("frame", self.EVENT_LBUTTONDOWN)
     cv2.waitKey(0)
