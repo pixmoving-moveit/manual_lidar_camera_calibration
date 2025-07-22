@@ -13,7 +13,6 @@ import rclpy.node
 from geometry_msgs.msg import PointStamped
 from geometry_msgs.msg import TransformStamped
 from std_msgs.msg import Float32MultiArray
-from std_msgs.msg import Bool
 from sensor_msgs.msg import CameraInfo
 from tf2_ros.static_transform_broadcaster import StaticTransformBroadcaster
 
@@ -30,7 +29,6 @@ class ExtrinsicCalibrator(rclpy.node.Node):
     self.lidar_frame_id = self.get_parameter('lidar_frame_id').get_parameter_value().string_value
     self.declare_parameter('camera_info_topic', '/camera_info')
     self.camera_info_topic = self.get_parameter('camera_info_topic').get_parameter_value().string_value
-    self.is_save_topic = self.declare_parameter('is_save_topic', False).get_parameter_value().string_value
     
     self.save_dir = self.declare_parameter('save_dir', os.path.join(os.path.expanduser('~'), "pix/calibration")).get_parameter_value().string_value
     if not os.path.exists(self.save_dir):
@@ -57,12 +55,6 @@ class ExtrinsicCalibrator(rclpy.node.Node):
       CameraInfo,
       self.camera_info_topic,
       self.cameraInfoCallback, 10
-    )
-    self.is_save_topic_subscriber = self.create_subscription(
-      Bool,
-      self.is_save_topic,
-      self.isSaveCallback,
-      10
     )
     
     self.camera_points = []
@@ -166,33 +158,37 @@ class ExtrinsicCalibrator(rclpy.node.Node):
             quat, t_vec = self.extrinsicsCompute(self.object_points, self.camera_points, self.K)
             self.get_logger().info("calibrated")
             self.make_transforms(quat, t_vec)
+            self.isSaveCallback()
     else:
       self.get_logger().warn("camera info not received.")
   
-  def isSaveCallback(self, msg: Bool):
-    if msg.data:
-      file_path = os.path.join(self.save_dir, self.lidar_frame_id + "_to_" + self.camera_frame_id + "_extrinsics"+ str(int(time.time())) + ".yaml")
-      if len(self.camera_points) == len(self.object_points) and len(self.camera_points) >= 6:
-        self.get_logger().info("Saving extrinsic parameters...")
-        with open(file_path, 'w') as file:
-          sensor_kit_calibration = {
-            'sensor_kit_base_link': {
-              self.camera_frame_id: {
-                'x': self.lidar_to_camera_extrinsics[0],
-                'y': self.lidar_to_camera_extrinsics[1],
-                'z': self.lidar_to_camera_extrinsics[2],
-                'roll': self.lidar_to_camera_extrinsics[3],
-                'pitch': self.lidar_to_camera_extrinsics[4],
-                'yaw': self.lidar_to_camera_extrinsics[5]
-              }
-            }
-          }
-          yaml.dump(sensor_kit_calibration, file)
-        self.get_logger().info("Extrinsic parameters saved."+ " File path: " + file_path)
-      else:
-        self.get_logger().warn("Not enough points to save extrinsic parameters.")
+  def isSaveCallback(self):
+    camera_name = self.camera_frame_id.split("/")[0]
+    file_path = os.path.join(self.save_dir, self.lidar_frame_id + "_to_" + camera_name + "_extrinsics"+ str(int(time.time())) + ".yaml")
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)  # 确保目录存在
+    
+    # 构造内容 - 转换为原生 float 列表
+    extrinsics = [float(x) for x in self.lidar_to_camera_extrinsics]
+    sensor_kit_calibration = {
+      'sensor_kit_base_link': {
+        self.camera_frame_id: {
+          'x': extrinsics[0],
+          'y': extrinsics[1],
+          'z': extrinsics[2],
+          'roll': extrinsics[3],
+          'pitch': extrinsics[4],
+          'yaw': extrinsics[5]
+        }
+      }
+    }
+    
+    if len(self.camera_points) == len(self.object_points) and len(self.camera_points) >= 6:
+      self.get_logger().info("Saving extrinsic parameters...")
+      with open(file_path, 'w') as file:
+        yaml.dump(sensor_kit_calibration, file, default_flow_style=False)
+      self.get_logger().info("Extrinsic parameters saved."+ " File path: " + file_path)
     else:
-      self.get_logger().info("Saving extrinsic parameters disabled.")
+      self.get_logger().warn("Not enough points to save extrinsic parameters.")
 
 def main():
   rclpy.init()
