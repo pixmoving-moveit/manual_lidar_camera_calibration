@@ -3,11 +3,15 @@
   <arg name="camera_frame_id" default="camera" /> 
   <arg name="lidar_frame_id" default="lidar_front_base_link" /> 
   <arg name="camera_info_topic" default="/camera_info" />
+  <arg name="is_save_topic" default="/manual_lidaer_camera_calibration/is_save" />
+  <arg name="save_dir" default="$(env HOME)/pix/calibration" />
 
   <node pkg="manual_lidar_camera_calibration" name="extrinsic_calibrator_node" exec="extrinsic_calibrator.py" output="screen">
     <param name="camera_frame_id" value="$(var camera_frame_id)" />
     <param name="lidar_frame_id" value="$(var lidar_frame_id)" />
     <param name="camera_info_topic" value="$(var camera_info_topic)" />
+    <param name="is_save_topic" value="$(var is_save_topic)" />
+    <param name="save_dir" value="$(var save_dir)" />
   </node>
 
 </launch>

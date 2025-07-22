@@ -3,6 +3,9 @@
 import numpy as np
 import cv2
 from scipy.spatial.transform import Rotation as R
+import yaml
+import os
+import time
 
 import threading
 import rclpy
@@ -10,6 +13,7 @@ import rclpy.node
 from geometry_msgs.msg import PointStamped
 from geometry_msgs.msg import TransformStamped
 from std_msgs.msg import Float32MultiArray
+from std_msgs.msg import Bool
 from sensor_msgs.msg import CameraInfo
 from tf2_ros.static_transform_broadcaster import StaticTransformBroadcaster
 
@@ -26,6 +30,14 @@ class ExtrinsicCalibrator(rclpy.node.Node):
     self.lidar_frame_id = self.get_parameter('lidar_frame_id').get_parameter_value().string_value
     self.declare_parameter('camera_info_topic', '/camera_info')
     self.camera_info_topic = self.get_parameter('camera_info_topic').get_parameter_value().string_value
+    self.is_save_topic = self.declare_parameter('is_save_topic', False).get_parameter_value().string_value
+    
+    self.save_dir = self.declare_parameter('save_dir', os.path.join(os.path.expanduser('~'), "pix/calibration")).get_parameter_value().string_value
+    if not os.path.exists(self.save_dir):
+      os.makedirs(self.save_dir)
+      print(self.save_dir, "created successfully!")
+    else:
+      print("Directory already exists!")
     
     self.K = np.eye(3)
     
@@ -46,9 +58,18 @@ class ExtrinsicCalibrator(rclpy.node.Node):
       self.camera_info_topic,
       self.cameraInfoCallback, 10
     )
+    self.is_save_topic_subscriber = self.create_subscription(
+      Bool,
+      self.is_save_topic,
+      self.isSaveCallback,
+      10
+    )
     
     self.camera_points = []
     self.object_points = []
+    
+    self.lidar_to_camera_extrinsics = [] # [x, y, z, roll, pitch, yaw]
+    self.camera_to_lidar_extrinsics = [] # [x, y, z, roll, pitch, yaw]
 
     self.is_camera_info_received = False
     
@@ -97,6 +118,7 @@ class ExtrinsicCalibrator(rclpy.node.Node):
       euler = r.as_euler('xyz')
       self.get_logger().info("euler angle: ")
       self.get_logger().info(f"x: {t_vec[0][0]}\ny: {t_vec[1][0]}\nz: {t_vec[2][0]}\nroll: {euler[0]}\npitch: {euler[1]}\nyaw: {euler[2]}")
+      self.camera_to_lidar_extrinsics = [t_vec[0][0], t_vec[1][0], t_vec[2][0], euler[0], euler[1], euler[2]]
 
       # lidar to camera
       tf_matrix_i = np.matrix(tf_matrix).I
@@ -109,6 +131,7 @@ class ExtrinsicCalibrator(rclpy.node.Node):
       euler_i = r_i.as_euler('xyz')
       self.get_logger().info("euler angle invert: ")
       self.get_logger().info(f"x: {tf_matrix_i[0, 3]}\ny: {tf_matrix_i[1, 3]}\nz: {tf_matrix_i[2, 3]}\nroll: {euler_i[0]}\npitch: {euler_i[1]}\nyaw: {euler_i[2]}")
+      self.lidar_to_camera_extrinsics = [tf_matrix_i[0, 3], tf_matrix_i[1, 3], tf_matrix_i[2, 3], euler_i[0], euler_i[1], euler_i[2]]
       return quat, t_vec
   
   def cameraInfoCallback(self, msg: CameraInfo):
@@ -145,6 +168,31 @@ class ExtrinsicCalibrator(rclpy.node.Node):
             self.make_transforms(quat, t_vec)
     else:
       self.get_logger().warn("camera info not received.")
+  
+  def isSaveCallback(self, msg: Bool):
+    if msg.data:
+      file_path = os.path.join(self.save_dir, self.lidar_frame_id + "_to_" + self.camera_frame_id + "_extrinsics"+ str(int(time.time())) + ".yaml")
+      if len(self.camera_points) == len(self.object_points) and len(self.camera_points) >= 6:
+        self.get_logger().info("Saving extrinsic parameters...")
+        with open(file_path, 'w') as file:
+          sensor_kit_calibration = {
+            'sensor_kit_base_link': {
+              self.camera_frame_id: {
+                'x': self.lidar_to_camera_extrinsics[0],
+                'y': self.lidar_to_camera_extrinsics[1],
+                'z': self.lidar_to_camera_extrinsics[2],
+                'roll': self.lidar_to_camera_extrinsics[3],
+                'pitch': self.lidar_to_camera_extrinsics[4],
+                'yaw': self.lidar_to_camera_extrinsics[5]
+              }
+            }
+          }
+          yaml.dump(sensor_kit_calibration, file)
+        self.get_logger().info("Extrinsic parameters saved."+ " File path: " + file_path)
+      else:
+        self.get_logger().warn("Not enough points to save extrinsic parameters.")
+    else:
+      self.get_logger().info("Saving extrinsic parameters disabled.")
 
 def main():
   rclpy.init()
